@@ -47,68 +47,109 @@ export const languageEnum = pgEnum("language", [
   "typescript",
 ]);
 
-// USERS TABLE
-export const usersTable = pgTable(
-  "users",
-  {
-    id: serial().primaryKey(),
-    username: varchar({ length: 100 }).notNull().unique(),
-    email: varchar({ length: 255 }).notNull().unique(),
-    password_hash: varchar({ length: 255 }).notNull(),
-    name: varchar({ length: 255 }).notNull(),
-    age: integer(),
-    bio: text(),
-    avatar_url: varchar({ length: 500 }),
-    rating: decimal({ precision: 10, scale: 2 }).notNull().default("1200"),
-    total_matches: integer().notNull().default(0),
-    wins: integer().notNull().default(0),
-    losses: integer().notNull().default(0),
-    win_streak: integer().notNull().default(0),
-    created_at: timestamp().notNull().defaultNow(),
-    updated_at: timestamp().notNull().defaultNow(),
-  },
-  (table) => ({
-    emailUnique: unique("email_unique").on(table.email),
-    usernameUnique: unique("username_unique").on(table.username),
-  })
-);
-
-// PROBLEMS TABLE
-export const problemsTable = pgTable("problems", {
-  id: serial().primaryKey(),
-  title: varchar({ length: 255 }).notNull(),
-  description: text().notNull(),
-  difficulty: difficultyEnum().notNull(),
-  constraints: text().notNull(),
-  input_format: text().notNull(),
-  output_format: text().notNull(),
-  examples: text().notNull(), // JSON string with example inputs/outputs
-  test_cases: text().notNull(), // JSON string with all test cases
-  solution_code: text(), // Optional reference solution
-  time_limit_ms: integer().notNull().default(1000),
-  memory_limit_mb: integer().notNull().default(256),
-  acceptance_rate: decimal({ precision: 5, scale: 2 }).notNull().default("0"),
-  times_solved: integer().notNull().default(0),
-  created_by: integer().notNull(),
+// USERS TABLE (BetterAuth compatible)
+export const usersTable = pgTable("user", {
+  id: varchar({ length: 255 }).primaryKey(),
+  name: varchar({ length: 255 }),
+  email: varchar({ length: 255 }).notNull().unique(),
+  emailVerified: boolean().notNull().default(false),
+  image: varchar({ length: 500 }),
+  username: varchar({ length: 100 }).unique(),
+  bio: text(),
+  // Custom fields for CodeConquer
+  rating: decimal({ precision: 10, scale: 2 }).notNull().default("1200"),
+  total_matches: integer().notNull().default(0),
+  wins: integer().notNull().default(0),
+  losses: integer().notNull().default(0),
+  win_streak: integer().notNull().default(0),
   created_at: timestamp().notNull().defaultNow(),
   updated_at: timestamp().notNull().defaultNow(),
-  visible: boolean().notNull().default(true),
 });
+
+// SESSIONS TABLE (BetterAuth)
+export const sessionTable = pgTable("session", {
+  id: varchar({ length: 255 }).primaryKey(),
+  expiresAt: timestamp().notNull(),
+  token: varchar({ length: 255 }).notNull().unique(),
+  createdAt: timestamp().notNull(),
+  updatedAt: timestamp().notNull(),
+  ipAddress: varchar({ length: 45 }),
+  userAgent: text(),
+  userId: varchar({ length: 255 })
+    .notNull()
+    .references(() => usersTable.id, { onDelete: "cascade" }),
+});
+
+// ACCOUNTS TABLE (BetterAuth - for OAuth)
+export const accountTable = pgTable("account", {
+  id: varchar({ length: 255 }).primaryKey(),
+  accountId: varchar({ length: 255 }).notNull(),
+  provider: varchar({ length: 255 }).notNull(),
+  providerAccountId: varchar({ length: 255 }).notNull(),
+  refreshToken: text(),
+  accessToken: text(),
+  expiresAt: timestamp(),
+  password: varchar({ length: 255 }),
+  userId: varchar({ length: 255 })
+    .notNull()
+    .references(() => usersTable.id, { onDelete: "cascade" }),
+});
+
+// VERIFICATION TABLE (BetterAuth - for email verification)
+export const verificationTable = pgTable("verification", {
+  id: varchar({ length: 255 }).primaryKey(),
+  identifier: varchar({ length: 255 }).notNull(),
+  value: varchar({ length: 255 }).notNull(),
+  expiresAt: timestamp().notNull(),
+  createdAt: timestamp(),
+  updatedAt: timestamp(),
+});
+
+// PROBLEMS TABLE
+export const problemsTable = pgTable(
+  "problems",
+  {
+    id: serial().primaryKey(),
+    title: varchar({ length: 255 }).notNull(),
+    description: text().notNull(),
+    difficulty: difficultyEnum().notNull(),
+    constraints: text().notNull(),
+    input_format: text().notNull(),
+    output_format: text().notNull(),
+    examples: text().notNull(), // JSON string with example inputs/outputs
+    test_cases: text().notNull(), // JSON string with all test cases
+    solution_code: text(), // Optional reference solution
+    time_limit_ms: integer().notNull().default(1000),
+    memory_limit_mb: integer().notNull().default(256),
+    acceptance_rate: decimal({ precision: 5, scale: 2 }).notNull().default("0"),
+    times_solved: integer().notNull().default(0),
+    created_by: varchar({ length: 255 }).notNull(),
+    created_at: timestamp().notNull().defaultNow(),
+    updated_at: timestamp().notNull().defaultNow(),
+    visible: boolean().notNull().default(true),
+  },
+  (table) => ({
+    createdByRef: foreignKey({
+      columns: [table.created_by],
+      foreignColumns: [usersTable.id],
+    }),
+  })
+);
 
 // MATCHES TABLE
 export const matchesTable = pgTable(
   "matches",
   {
     id: serial().primaryKey(),
-    player1_id: integer().notNull(),
-    player2_id: integer().notNull(),
+    player1_id: varchar({ length: 255 }).notNull(),
+    player2_id: varchar({ length: 255 }).notNull(),
     problem_id: integer().notNull(),
     status: matchStatusEnum().notNull().default("pending"),
     player1_rating_before: decimal({ precision: 10, scale: 2 }).notNull(),
     player2_rating_before: decimal({ precision: 10, scale: 2 }).notNull(),
     player1_rating_after: decimal({ precision: 10, scale: 2 }),
     player2_rating_after: decimal({ precision: 10, scale: 2 }),
-    winner_id: integer(), // null if draw/cancelled
+    winner_id: varchar({ length: 255 }), // null if draw/cancelled
     player1_solved: boolean().notNull().default(false),
     player2_solved: boolean().notNull().default(false),
     player1_solve_time_ms: integer(), // Time taken in milliseconds
@@ -145,7 +186,7 @@ export const submissionsTable = pgTable(
   "submissions",
   {
     id: serial().primaryKey(),
-    user_id: integer().notNull(),
+    user_id: varchar({ length: 255 }).notNull(),
     match_id: integer().notNull(),
     problem_id: integer().notNull(),
     code: text().notNull(),
@@ -180,7 +221,7 @@ export const ratingHistoryTable = pgTable(
   "rating_history",
   {
     id: serial().primaryKey(),
-    user_id: integer().notNull(),
+    user_id: varchar({ length: 255 }).notNull(),
     match_id: integer().notNull(),
     rating_before: decimal({ precision: 10, scale: 2 }).notNull(),
     rating_after: decimal({ precision: 10, scale: 2 }).notNull(),
@@ -204,7 +245,7 @@ export const matchmakingQueueTable = pgTable(
   "matchmaking_queue",
   {
     id: serial().primaryKey(),
-    user_id: integer().notNull().unique(),
+    user_id: varchar({ length: 255 }).notNull().unique(),
     current_rating: decimal({ precision: 10, scale: 2 }).notNull(),
     difficulty_preference: difficultyEnum().notNull().default("medium"),
     queued_at: timestamp().notNull().defaultNow(),
@@ -218,18 +259,27 @@ export const matchmakingQueueTable = pgTable(
 );
 
 // LEADERBOARD VIEW TABLE (denormalized for performance)
-export const leaderboardTable = pgTable("leaderboard", {
-  id: serial().primaryKey(),
-  user_id: integer().notNull().unique(),
-  username: varchar({ length: 100 }).notNull(),
-  rating: decimal({ precision: 10, scale: 2 }).notNull(),
-  wins: integer().notNull(),
-  losses: integer().notNull(),
-  total_matches: integer().notNull(),
-  win_streak: integer().notNull(),
-  rank: integer().notNull(),
-  updated_at: timestamp().notNull().defaultNow(),
-});
+export const leaderboardTable = pgTable(
+  "leaderboard",
+  {
+    id: serial().primaryKey(),
+    user_id: varchar({ length: 255 }).notNull().unique(),
+    username: varchar({ length: 100 }).notNull(),
+    rating: decimal({ precision: 10, scale: 2 }).notNull(),
+    wins: integer().notNull(),
+    losses: integer().notNull(),
+    total_matches: integer().notNull(),
+    win_streak: integer().notNull(),
+    rank: integer().notNull(),
+    updated_at: timestamp().notNull().defaultNow(),
+  },
+  (table) => ({
+    userRef: foreignKey({
+      columns: [table.user_id],
+      foreignColumns: [usersTable.id],
+    }),
+  })
+);
 
 // RELATIONS
 export const usersRelations = relations(usersTable, ({ many }) => ({
